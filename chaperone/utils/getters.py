@@ -16,13 +16,15 @@
 #
 # get_foos() returns a dict of the foo objects keyed by name. Used to populate
 # options for fields with attribute "options: foos".
-
+from __future__ import division
 import fcntl
 import inspect
 import logging
 import os
 import sys
 import yaml
+import paramiko
+import re
 from requests import exceptions as requests_exceptions
 
 from django.conf import settings
@@ -50,6 +52,14 @@ MGMT_VC_NETWORKS = 'mgmt_vc_networks'
 MGMT_VC_PASSWORD = 'mgmt_vc_password'
 MGMT_VC_USERNAME = 'mgmt_vc_username'
 MGMT_VC = 'mgmt_vc'
+
+answerfilepath='/var/lib/chaperone/answerfile.yml'
+answer_file_dictionary = yaml.load(answerfilepath)
+
+adminfilepath='/var/lib/chaperone-admin/answerfile.yml'
+admin_answer_file_dictionary = yaml.load(adminfilepath)
+
+
 
 def _get_vcenter_data():
     filename = settings.VCENTER_SETTINGS
@@ -452,3 +462,104 @@ def get_mgmt_vc_cluster_value():
     """Returns saved name of management vCenter cluster."""
     vcenter_data = _get_vcenter_data()
     return vcenter_data.get(MGMT_VC_CLUSTER, '')
+
+def get_disk1_size():
+    return get_disk_size(answer_file_dictionary["esxi_host1_ip"])
+    
+def get_disk2_size():
+    return get_disk_size(answer_file_dictionary["esxi_host2_ip"])
+    
+def get_disk3_size():
+    return get_disk_size(answer_file_dictionary["esxi_host3_ip"])
+    
+def get_disk4_size():
+    
+    return get_disk_size(answer_file_dictionary["esxi_host4_ip"])
+
+    
+def get_disk_size(hostip):
+    """Returns disk size .""" 
+       
+    username= answer_file_dictionary["esxi_host1_username"]
+    password= answer_file_dictionary["esxi_host1_password"]
+    try:
+        ssh = paramiko.SSHClient()
+        ssh.load_system_host_keys()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(hostip, 22, username, password)
+        LOG.debug('SSH connection to the host %s is succesfull' % hostip)
+    except Exception as e:
+        changed = False
+        LOG.debug('SSH conection to the remote host failed.') 
+    devices = {}
+    test_cmd = "esxcli storage core device list | grep -E 'Devfs Path:'"
+    tstdin, tstdout, tstderr = ssh.exec_command(test_cmd)
+    toutput  = tstdout.read()
+    
+    LOG.debug('Physical {}-{}'.format(toutput, type(toutput)))
+    if 'mpx' in toutput:
+        cmd = "esxcli storage core device list | grep -E 'Size:|Is SSD:|mpx'"
+        LOG.debug('Executing %s for host %s' %(cmd,hostip))
+        
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        if len(stderr.read()) != 0:
+            changed = False
+        else:
+            output  = stdout.read()
+            output = output.replace("\n","")
+            LOG.debug("the command output is {0}".format(output))
+            list = output.split("(")
+            list.pop(0)
+            LOG.debug("the list is {0}".format(list))
+            for i in list:
+                m = re.match("(mpx\.\w+(\:\w+)+)\)\s+Size:\s(\d+)", i)
+                if m and int(m.group(3)) > 1024:
+                    in_gb = int(m.group(3))/1024
+                    club = str(in_gb)+'GB('+m.group(1)+')'
+                    devices[club] = m.group(3)
+
+    if 'naa' in toutput:
+        cmd = "esxcli storage core device list | grep -E 'Size:|Is SSD:|naa'"
+        LOG.debug('Executing %s for host %s' %(cmd,hostip))
+        devices = {}
+        stdin, stdout, stderr = ssh.exec_command(cmd)
+        if len(stderr.read()) != 0:
+            changed = False
+        else:
+            output  = stdout.read()
+            output = output.replace("\n","")
+            list = output.split("(")            
+            for i in list:
+                m = re.match("(naa\.\w+)\)\s+Size:\s(\d+)",i)                
+                if m:
+                    in_gb = int(m.group(2))/1024
+                    club = str(round(in_gb))+'GB('+m.group(1)+')'
+                    devices[club] = m.group(2)
+    
+    LOG.debug('The device id with their sizes are')
+    LOG.debug(devices)
+    return devices
+
+def get_mgmt_az():
+    az = {}
+    az[answer_file_dictionary["mgmt_az_name"]] = ""
+    return az
+
+def get_compute_az():
+    az = {}
+    for count in range(1, int(admin_answer_file_dictionary["compute_az"])+1):
+        az[answer_file_dictionary["compute_az_{}_name".format(count)]] = ""
+    return az
+def get_compute_hosts():
+    hosts = {}
+    for count in range(1, int(admin_answer_file_dictionary["no_compute_cluster_name"])+1):
+        for host_number in range(1, int(admin_answer_file_dictionary["no_hosts_per_compute_cluster"])+1):
+            hosts[answer_file_dictionary["esxi_compute{}_host{}_ip".format(count,host_number)]] = ""
+    return hosts
+def get_edge_hosts():
+    host= {}
+    host[answer_file_dictionary["nsx_edge_ips"]] = ""
+    return host
+
+
+
