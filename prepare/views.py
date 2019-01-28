@@ -149,20 +149,22 @@ def _get_form(attr, saved_answers, opt_cache, attr_id=None):
         field_name = attr_options
         # Make options a list now.
         attr_options = []
+        opt_names = []
         if field_name in opt_cache:
             opt_names = opt_cache[field_name]
         else:
-            # Get options dynamically.
-            fn_name = 'get_%s' % field_name
-            LOG.debug('Calling on %s to obtain options.' % fn_name)
-            fn = getattr(getters, fn_name)
-            options = fn()
-            if options:
-                opt_names = options.keys()
-                opt_names.sort()
-            else:
-                opt_names = ['']
-            opt_cache[field_name] = opt_names
+            try: 
+                # Get options dynamically.
+                fn_name = 'get_%s' % field_name
+                LOG.debug('Calling on %s to obtain options.' % fn_name)
+                fn = getattr(getters, fn_name)
+                options = fn()
+                if options:
+                    opt_names = options.keys()
+                    opt_names.sort()
+                opt_cache[field_name] = opt_names
+            except (KeyError, AttributeError) as e:
+                pass               
 
         # Options for dropdown menu.
         for name in opt_names:
