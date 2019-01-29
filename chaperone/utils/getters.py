@@ -29,9 +29,11 @@ from requests import exceptions as requests_exceptions
 
 from django.conf import settings
 
-from pyVmomi import vim
+from pyVmomi import vim, vmodl
 from pyVim import connect
+from pyVim.connect import SmartConnect, SmartConnectNoSSL
 
+import json, time
 
 LOG = logging.getLogger(__name__)
 
@@ -561,5 +563,103 @@ def get_edge_hosts():
     host[answer_file_dictionary["nsx_edge_ips"]] = ""
     return host
 
+def get_datastore_objs():
+    content = get_vcenter_connection()
+    obj = {}
+    ds_obj = {}
+    container = content.viewManager.CreateContainerView(content.rootFolder,
+                                                         [vim.Datastore], True)
+    LOG.debug("Connected to container  !")
+
+    for managed_object_ref in container.view:
+        obj.update({managed_object_ref: managed_object_ref.name})
+    LOG.debug("Got DS obj {} !".format(obj))
+
+    datastores = obj.values()
+    for value in datastores:
+        ds_obj[value] = ""
+    return ds_obj
+
+def get_datacenter_objs():
+    content = get_vcenter_connection()
+    obj = {}
+    dc_obj = {}
+    container = content.viewManager.CreateContainerView(content.rootFolder,
+                                                         [vim.Datacenter], True)
+    LOG.debug("Connected to container  !")
+
+    for managed_object_ref in container.view:
+        obj.update({managed_object_ref: managed_object_ref.name})
+    LOG.debug("Got DC obj {} !".format(obj))
+
+    datacenters = obj.values()
+    for value in datacenters:
+        dc_obj[value] = ""
+    return dc_obj
+
+def get_network_objs():
+    content = get_vcenter_connection()
+    obj = {}
+    nw_obj = {}
+    container = content.viewManager.CreateContainerView(content.rootFolder,
+                                                         [vim.dvs.DistributedVirtualPortgroup, vim.Network], True)
+    LOG.debug("Connected to container  !")
+
+    for managed_object_ref in container.view:
+        obj.update({managed_object_ref: managed_object_ref.name})
+    LOG.debug("Got Network obj {} !".format(obj))
+
+    network = obj.values()
+    for value in network:
+        nw_obj[value] = ""
+    return nw_obj
+
+def get_cluster_objs():    
+    content = get_vcenter_connection()
+    obj = {}
+    cl_obj = {}
+    container = content.viewManager.CreateContainerView(content.rootFolder,[vim.ClusterComputeResource], True)
+    LOG.debug("Connected to container  !")
+
+    for managed_object_ref in container.view:
+        obj.update({managed_object_ref: managed_object_ref.name})
+    LOG.debug("Got Cluster obj {} !".format(obj))
+
+    clusters = obj.values()
+    for value in clusters:
+        cl_obj[value] = ""
+    return cl_obj
 
 
+def get_host_objs():    
+    content = get_vcenter_connection()
+    obj = {}
+    host_obj = {}
+    container = content.viewManager.CreateContainerView(content.rootFolder,[vim.HostSystem], True)
+    LOG.debug("Connected to container  !")
+
+    for managed_object_ref in container.view:
+        obj.update({managed_object_ref: managed_object_ref.name})
+    LOG.debug("Got ESXi obj {} !".format(obj))
+
+    hosts = obj.values()
+    for value in hosts:
+        host_obj[value] = ""
+    return host_obj
+
+def get_vcenter_connection():
+    """Returns vCenter connection obj .""" 
+    vcenter_ip = answer_file_dictionary["vcenter_host_ip"]
+    vcenter_username= answer_file_dictionary["vcenter_user"]
+    vcenter_password= answer_file_dictionary["vcenter_pwd"]
+
+    try:
+        LOG.debug("Trying to connect to VCENTER SERVER . . .")
+        si = SmartConnectNoSSL(host=vcenter_ip, user=vcenter_username, pwd=vcenter_password, port=443)
+        LOG.debug("Connected to VCENTER SERVER !")
+    except IOError, e:
+        #pass
+	#atexit.register(Disconnect, si)
+	LOG.debug("Connection failed {0}")
+        module.fail_json(chagned=False, msg="Failed to connect vCenter")
+    return si.RetrieveContent()
