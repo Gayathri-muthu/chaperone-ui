@@ -630,6 +630,22 @@ def get_cluster_objs():
         cl_obj[value] = ""
     return cl_obj
 
+def get_resource_pool_objs():    
+    content = get_vcenter_connection()
+    obj = {'vim.ResourcePool:dummy': ''}
+    pool_obj = {}
+    container = content.viewManager.CreateContainerView(content.rootFolder,[vim.ResourcePool], True)
+    LOG.debug("Connected to container  !")
+
+    for managed_object_ref in container.view:
+        obj.update({managed_object_ref: managed_object_ref.name})
+    LOG.debug("Got Resource Pool obj {} !".format(obj))
+
+    pools = obj.values()
+    for value in pools:
+        pool_obj[value] = ""
+    return pool_obj
+
 
 def get_host_objs():    
     content = get_vcenter_connection()
